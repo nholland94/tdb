@@ -5,15 +5,17 @@ staload "utf8.sats"
 
 // TODO: fix infix operators
 
-fun string_advance {n,c:int | 0 < c} (str: string n, count: int c): string(n-c) =
+fun string_advance {n,c:int | c > 0} (str: string n, count: int c): string(n-c) =
   $UN.cast{string(n-c)}(ptr_add<char>(string2ptr(str), i2sz(count)))
+
+fun uint16_to_uint(a: uint16): uint = $UN.cast{uint}(a)
 
 fun calculate_packed_utf8_rune
       {n:int | 1 <= n; n <= 3}
       (base: uint16, extra_bytes: string n): uint16 =
   let
     fun reduce_value
-          {n,c:nat}
+          {n,c:nat | n > 0}
           (str: string n, count: size_t c): uint16 =
       if count = i2sz(0) then $UN.cast{uint16}(0) else let
           val head = string_head(str)
@@ -21,7 +23,8 @@ fun calculate_packed_utf8_rune
           val value = (0x3Fu land char2ui(head))
           val new_count = count - 1
           val shifted_value = g0uint_lsl(value, 6 * sz2i(new_count))
-        in shifted_value lor reduce_value(tail, new_count) end
+          val next_value = uint16_to_uint(if count = 0 then $UN.cast{uint16}(0) else reduce_value(tail, new_count))
+        in shifted_value lor next_value end
 
     val extra_bytes_count = string_length(extra_bytes)
     val shifted_base = g0uint_lsl(base, 6 * sz2i(extra_bytes_count))
@@ -46,9 +49,7 @@ implement read_utf8_rune_from_string(str) = let
   end
 
 implement decode_utf8_from_string(str) = arr where {
-  val alloc_size = 64
-  val arr = dynarray_make_nil(i2sz(alloc_size))
-  implement {} dynarray$recapacitize(): int = alloc_size
+  val arr = dynarray_make_nil(i2sz(64))
 
   fun loop {n:int} (str: string n, arr: !dynarray uint16): void =
     if string_is_empty(str) then () else let
